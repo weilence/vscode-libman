@@ -1,0 +1,1 @@
+Client-side library acquisition in ASP.NET Core with LibMan

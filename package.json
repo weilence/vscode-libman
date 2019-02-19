@@ -1,0 +1,70 @@
+{
+	"name": "libman",
+	"displayName": "Libman",
+	"description": "Client-side library acquisition in ASP.NET Core with LibMan",
+	"version": "0.0.1",
+	"publisher": "weilence",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/Weilence/vscode-libman.git"
+	},
+	"engines": {
+		"vscode": "^1.31.0"
+	},
+	"categories": [
+		"Other"
+	],
+	"activationEvents": [
+		"workspaceContains:**/libman.json",
+		"onCommand:libman.init",
+		"onCommand:libman.install"
+	],
+	"main": "./out/extension.js",
+	"contributes": {
+		"commands": [
+			{
+				"command": "libman.init",
+				"title": "Init",
+				"category": "Libman"
+			},
+			{
+				"command": "libman.install",
+				"title": "Install",
+				"category": "Libman"
+			},
+			{
+				"command": "libman.uninstall",
+				"title": "Uninstall",
+				"category": "Libman"
+			},
+			{
+				"command": "libman.restore",
+				"title": "Restore",
+				"category": "Libman"
+			},
+			{
+				"command": "libman.clean",
+				"title": "Clean",
+				"category": "Libman"
+			}
+		]
+	},
+	"scripts": {
+		"vscode:prepublish": "npm run compile",
+		"compile": "tsc -p ./",
+		"watch": "tsc -watch -p ./",
+		"postinstall": "node ./node_modules/vscode/bin/install",
+		"test": "npm run compile && node ./node_modules/vscode/bin/test"
+	},
+	"devDependencies": {
+		"@types/mocha": "^2.2.42",
+		"@types/node": "^10.12.21",
+		"@types/request": "^2.48.1",
+		"tslint": "^5.12.1",
+		"typescript": "^3.3.1",
+		"vscode": "^1.1.28"
+	},
+	"dependencies": {
+		"request": "^2.88.0"
+	}
+}
