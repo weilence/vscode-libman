@@ -1,56 +1,35 @@
 import * as vscode from 'vscode';
-import { stat, readFile, readFileSync, promises } from "fs";
-import { exec } from "child_process";
-import { resolve, dirname } from "path";
-import * as request from "request";
+import { stat, readFile, readFileSync, promises } from 'fs';
+import { resolve, dirname } from 'path';
+import * as request from 'request';
 import { Config } from './config';
+import { Command } from './command';
 
 interface CdnjsModel {
-    results: Array<{
-        name: string;
-        latest: string;
+    name: string;
+    latest: string;
+    assets: Array<{
+        files: Array<string>;
+        version: string;
     }>;
+}
+
+interface CdnjsResult {
+    results: Array<CdnjsModel>;
     total: number;
 }
 
-interface Command {
-    command: string;
-    arguments: Array<string>;
-    options: Array<{
-        name: string;
-        value: string;
-    }>;
-    cwd: string;
+interface CdnjsQuickItem extends vscode.QuickPickItem {
+    packageName: string;
+    packageVersion?: string;
 }
 
 export class Libman {
     private path: string;
-    private exePath: string;
     private config?: Config;
 
     constructor(extensionPath: string) {
-        this.path = resolve(extensionPath, '.libman');
-        this.exePath = resolve(this.path, 'libman.exe');
-    }
-
-    private exec(command: Command) {
-        let commandStr = `${this.exePath} ${command.arguments.join(' ')}`;
-        if (command.options) {
-            command.options.forEach((item) => {
-                commandStr += ` ${item.name} ${item.value}`;
-            });
-        }
-
-        return new Promise((resolve, reject) => {
-            exec(commandStr, { cwd: command.cwd }, (error, stdout, stderr) => {
-                if (error) {
-                    reject(error.message);
-                } else if (stderr) {
-                    resolve(stderr);
-                }
-                resolve();
-            });
-        });
+        this.path = resolve(extensionPath, '.libman', 'libman.exe');
     }
 
     public isExist(): Promise<boolean> {
@@ -65,39 +44,29 @@ export class Libman {
     }
 
     public installTool() {
-        return new Promise((resolve, reject) => {
-            exec(`dotnet tool install Microsoft.Web.LibraryManager.Cli --tool-path ${this.path}`, (error, stdout, stderr) => {
-                if (error) {
-                    reject(error);
-                }
-            });
-        });
+        let command = new Command('dotnet', ['tool', 'install', 'Microsoft.Web.LibraryManager.Cli'], [{ name: '--tool-path', value: dirname(this.path) }]);
+        return command.exec();
     }
 
     public async init() {
         let currentWorkDirectory = await this.getInitDirectory();
 
-        var command: Command = {
-            command: this.exePath,
-            arguments: ['init'],
-            options: [],
-            cwd: currentWorkDirectory
-        };
+        let command = new Command(this.path, ['init'], [], currentWorkDirectory);
 
-        await this.SetDefaultProvider(command);
-        await this.SetDefaultDestination(command);
+        await this.setDefaultProvider(command);
+        await this.setDefaultDestination(command);
 
-        return this.exec(command);
+        return command.exec();
     }
 
     public async install() {
-        this.config = await Config.getConfig();
+        this.config = await Config.Create();
         let configDir = dirname(this.config.configPath);
 
         return new Promise((resolve, reject) => {
-            let quickPick = vscode.window.createQuickPick();
+            let quickPick = vscode.window.createQuickPick<CdnjsQuickItem>();
             quickPick.placeholder = 'Pakcage Name';
-            let cache: { [key: string]: Array<vscode.QuickPickItem> } = {};
+            let cache: { [key: string]: Array<CdnjsQuickItem> } = {};
 
             quickPick.onDidChangeValue((input) => {
                 quickPick.busy = true;
@@ -105,14 +74,35 @@ export class Libman {
                 if (cache[input]) {
                     quickPick.busy = false;
                     quickPick.items = cache[input];
+                    return;
+                }
+
+                if (input.indexOf('@') > -1) {
+                    let [name] = input.split('@');
+                    request.get(`https://api.cdnjs.com/libraries/${name}?fields=assets`, (error, response, body) => {
+                        let model: CdnjsModel = JSON.parse(body);
+                        let quickPickItem: Array<CdnjsQuickItem> = [];
+                        model.assets.forEach((item) => {
+                            quickPickItem.push({
+                                label: item.version,
+                                packageName: name,
+                                packageVersion: item.version,
+                                alwaysShow: true
+                            });
+                        });
+                        cache[input] = quickPickItem;
+                        quickPick.busy = false;
+                        quickPick.items = quickPickItem;
+                    });
                 }
                 else {
                     request.get(`https://api.cdnjs.com/libraries?search=${input}`, (error, response, body) => {
-                        let model: CdnjsModel = JSON.parse(body);
-                        let quickPickItem: Array<vscode.QuickPickItem> = [];
-                        model.results.forEach((value) => {
+                        let model: CdnjsResult = JSON.parse(body);
+                        let quickPickItem: Array<CdnjsQuickItem> = [];
+                        model.results.forEach((item) => {
                             quickPickItem.push({
-                                label: value.name,
+                                label: item.name,
+                                packageName: input,
                                 alwaysShow: true
                             });
                         });
@@ -126,16 +116,16 @@ export class Libman {
                 if (!this.config) {
                     return;
                 }
-                let command: Command = {
-                    command: this.exePath,
-                    arguments: ['install', quickPick.value],
-                    options: [],
-                    cwd: configDir
-                };
+                let selectItem = quickPick.selectedItems[0];
+                let packageFullName = selectItem.packageName;
+                if(selectItem.packageVersion){
+                    packageFullName += '@' + selectItem.packageVersion;
+                }
+                let command = new Command(this.path, ['install', packageFullName], [], configDir);
                 if (!this.config.defaultDestination) {
                     let destination = await this.getDestination();
                     if (destination) {
-                        command.options.push({
+                        command.addOption({
                             name: '--destination',
                             value: destination
                         });
@@ -143,14 +133,14 @@ export class Libman {
                         reject();
                     }
                 }
-                await this.exec(command);
+                await command.exec();
             });
             quickPick.show();
         });
     }
 
     public async uninstall() {
-        let configPath = await Config.SelectConfigPath();
+        let configPath = await Config.SelectPath();
         let configDir = dirname(configPath);
 
         this.config = JSON.parse(readFileSync(configPath, { encoding: 'utf-8' }));
@@ -165,43 +155,28 @@ export class Libman {
         if (!libName) {
             return Promise.reject();
         }
-        let command: Command = {
-            command: this.exePath,
-            arguments: ['uninstall', libName.label],
-            options: [],
-            cwd: configDir
-        };
-        return await this.exec(command);
+        let command = new Command(this.path, ['uninstall', libName.label], [], configDir);
+        return await command.exec();
     }
 
     public async restore() {
-        let configPath = await Config.SelectConfigPath();
+        let configPath = await Config.SelectPath();
         let configDir = dirname(configPath);
-        let command: Command = {
-            command: this.exePath,
-            arguments: ['restore'],
-            options: [],
-            cwd: configDir
-        };
-        return await this.exec(command);
+        let command = new Command(this.path, ['restore'], [], configDir);
+        return await command.exec();
     }
 
     public async clean() {
-        let configPath = await Config.SelectConfigPath();
+        let configPath = await Config.SelectPath();
         let configDir = dirname(configPath);
-        let command: Command = {
-            command: this.exePath,
-            arguments: ['clean'],
-            options: [],
-            cwd: configDir
-        };
-        return await this.exec(command);
+        let command = new Command(this.path, ['clean'], [], configDir);
+        return await command.exec();
     }
 
-    private async SetDefaultProvider(command: Command) {
+    private async setDefaultProvider(command: Command) {
         let defaultProvider = await this.getProvider();
         if (defaultProvider) {
-            command.options.push({
+            command.addOption({
                 name: '--default-provider',
                 value: 'cdnjs'
             });
@@ -212,10 +187,10 @@ export class Libman {
         }
     }
 
-    private async SetDefaultDestination(command: Command) {
+    private async setDefaultDestination(command: Command) {
         let defaultDestination = await this.getDestination();
         if (defaultDestination) {
-            command.options.push({
+            command.addOption({
                 name: '--default-destination',
                 value: defaultDestination
             });
@@ -235,7 +210,7 @@ export class Libman {
     }
 
     private async getInitDirectory() {
-        let folders = await vscode.window.showOpenDialog({ canSelectFiles: false, canSelectFolders: true, openLabel: "Select libman.json folder" });
+        let folders = await vscode.window.showOpenDialog({ canSelectFiles: false, canSelectFolders: true, openLabel: 'Select libman.json folder' });
         if (!folders || !folders[0].fsPath) {
             return Promise.reject();
         }

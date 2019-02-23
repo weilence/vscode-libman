@@ -21,12 +21,12 @@ export class Config {
         } = JSON.parse(readFileSync(configPath, { encoding: 'utf-8' })));
     }
 
-    public static async getConfig() {
-        let configPath = await this.SelectConfigPath();
+    public static async Create() {
+        let configPath = await this.SelectPath();
         return new Config(configPath);
     }
 
-    public static async SelectConfigPath() {
+    public static async SelectPath() {
         let items: vscode.QuickPickItem[] = await vscode.workspace.findFiles('**/libman.json').then(uris => {
             return uris.map(m => ({ label: m.fsPath }));
         });
