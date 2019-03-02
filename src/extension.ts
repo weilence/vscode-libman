@@ -1,9 +1,6 @@
 // The module 'vscode' contains the VS Code extensibility API
 // Import the module and reference it with the alias vscode in your code below
 import * as vscode from 'vscode';
-import { exec } from 'child_process';
-import { stat } from 'fs';
-import { resolve } from 'path';
 import { Libman } from './libman';
 
 // this method is called when your extension is activated

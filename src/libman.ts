@@ -4,6 +4,7 @@ import { resolve, dirname } from 'path';
 import * as request from 'request';
 import { Config } from './config';
 import { Command } from './command';
+import { Channel } from './channel';
 
 interface CdnjsModel {
     name: string;
@@ -43,9 +44,12 @@ export class Libman {
         });
     }
 
-    public installTool() {
+    public async installTool() {
+		Channel.output.appendLine("you are not install libman, waiting for install...");
+		Channel.output.show();
         let command = new Command('dotnet', ['tool', 'install', 'Microsoft.Web.LibraryManager.Cli'], [{ name: '--tool-path', value: dirname(this.path) }]);
-        return command.exec();
+        await command.exec();
+        Channel.output.appendLine("libman install success");
     }
 
     public async init() {
