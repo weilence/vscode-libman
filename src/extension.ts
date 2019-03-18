@@ -2,6 +2,7 @@
 // Import the module and reference it with the alias vscode in your code below
 import * as vscode from 'vscode';
 import { Libman } from './libman';
+import { Command } from './command';
 
 // this method is called when your extension is activated
 // your extension is activated the very first time the command is executed
@@ -14,7 +15,15 @@ export async function activate(context: vscode.ExtensionContext) {
 	// The command has been defined in the package.json file
 	// Now provide the implementation of the command with registerCommand
 	// The commandId parameter must match the command field in package.json
-	var libman = new Libman(context.extensionPath);
+	let command = new Command('dotnet', [], [{ name: '--version', value: '' }]);
+	try {
+		await command.exec();
+	} catch (error) {
+		vscode.window.showErrorMessage('dotnet not found. you should install dotnet core first.');
+		return;
+	}
+
+	let libman = new Libman(context.extensionPath);
 
 	let isExist = await libman.isExist();
 	if (!isExist) {

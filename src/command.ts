@@ -1,7 +1,7 @@
 import { exec } from "child_process";
 
 export class Command {
-    constructor(private command: string, private args: string[], private options: Array<{ name: string; value: string; }>, private cwd?: string) {
+    constructor(private command: string, private args: string[], private options: Array<{ name: string; value?: string; }>, private cwd?: string) {
 
     }
 
